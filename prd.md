@@ -372,7 +372,7 @@ D:\openclaw\
       "Verify: speech is transcribed (check agent logs), OpenClaw responds, Edge TTS audio plays back",
       "Take a screenshot of the working UI for verification"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 10,

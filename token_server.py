@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 
 from aiohttp import web
 from dotenv import load_dotenv
@@ -18,7 +19,7 @@ async def handle_token(request: web.Request) -> web.Response:
         AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
         .with_identity(identity)
         .with_grants(VideoGrants(room_join=True, room=ROOM_NAME))
-        .with_ttl(3600)
+        .with_ttl(timedelta(hours=1))
         .to_jwt()
     )
     return web.json_response({"token": token, "url": LIVEKIT_URL})
