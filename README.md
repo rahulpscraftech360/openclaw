@@ -1,301 +1,354 @@
-# Ralph Wiggum: Autonomous Development for Proof of Concepts
+# OpenClaw Voice Agent
 
-> **Credit:** This guide is inspired by [JeredBlu's Ralph Wiggum Guide](https://github.com/JeredBlu/guides/blob/main/Ralph_Wiggum_Guide.md). I've adapted and extended it to fit my specific workflow using the `/create-prd` command and Vercel's agent-browser CLI.
+A voice-based personal assistant that lets you talk to your OpenClaw AI agent through a browser. Speak, listen, and get audio responses — powered by LiveKit, Deepgram, and Edge TTS.
 
----
+## System Architecture
 
-## What is Ralph Wiggum?
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              BROWSER (Frontend)                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │  index.html + app.js + style.css                                    │    │
+│  │  • Mic capture via WebRTC                                           │    │
+│  │  • Audio playback                                                   │    │
+│  │  • LiveKit JS SDK (livekit-client)                                  │    │
+│  │  • Transcript display                                               │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      │ WebRTC (audio streams)
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         LIVEKIT SERVER (port 7880)                          │
+│  • WebRTC SFU (Selective Forwarding Unit)                                   │
+│  • Room management                                                          │
+│  • Audio/video routing                                                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      │ Agent connection
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         LIVEKIT AGENT (Python)                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │
+│  │  Deepgram    │  │  Silero VAD  │  │  OpenClaw    │  │  Edge TTS    │    │
+│  │  STT         │  │  (Voice      │  │  LLM         │  │  (Text to    │    │
+│  │  (Speech to  │  │  Activity    │  │  (Chat       │  │  Speech)     │    │
+│  │  Text)       │  │  Detection)  │  │  Completions)│  │              │    │
+│  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘    │
+│         │                  │                │                  │            │
+│         ▼                  ▼                ▼                  ▼            │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                      AgentSession Pipeline                          │    │
+│  │  Audio In → STT → VAD → LLM → TTS → Audio Out                      │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      │ HTTP API
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      OPENCLAW GATEWAY (port 18789)                          │
+│  • /v1/chat/completions endpoint                                            │
+│  • Agent orchestration                                                      │
+│  • Memory & context management                                              │
+│  • External LLM routing (Claude, GPT, etc.)                                 │
+└─────────────────────────────────────────────────────────────────────────────┘
 
-Ralph Wiggum is a method for running Claude Code in a continuous autonomous loop. Each iteration runs in a **fresh context window**, allowing the agent to work through a series of tasks until completion without context bloat.
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      TOKEN SERVER (port 8081)                               │
+│  • Generates LiveKit room tokens                                            │
+│  • CORS-enabled for browser access                                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
-### When to Use Ralph Wiggum
+## Data Flow
 
-**Ideal for:**
-- Starting projects from scratch
-- Building proof of concepts (POCs) with a clearly defined scope
-- Greenfield development where requirements are well-understood
-- Projects where you can define "done" precisely
-
-**Not ideal for:**
-- Complex existing codebases
-- Vibe coding or exploratory work without clear goals
-- Projects with ambiguous requirements
-- Situations requiring frequent human judgment calls
-
-The key insight: **Ralph Wiggum works best when you have a clear plan.** If you don't know exactly what you're building, stop and figure that out first. The `/create-prd` command helps you do exactly that.
-
----
-
-## Why Not the Anthropic Plugin?
-
-The official Ralph Wiggum plugin for Claude Code has a fundamental flaw: it runs everything in a **single context window**. This means:
-
-- Context gets bloated over time
-- Increased hallucination risk as context fills up
-- No true separation between iterations
-- You may need to manually compact mid-run
-
-The bash loop method (`ralph.sh`) starts a **fresh context window** for each iteration. This is the correct approach for long-running autonomous tasks.
-
----
+1. **User speaks** → Browser captures audio via WebRTC
+2. **Audio streams** → LiveKit Server routes to Agent
+3. **STT (Deepgram)** → Converts speech to text
+4. **VAD (Silero)** → Detects when user stops speaking
+5. **LLM (OpenClaw)** → Processes text, generates response
+6. **TTS (Edge TTS)** → Converts response to audio
+7. **Audio streams** → Back through LiveKit to browser
+8. **User hears** → Response plays in browser
 
 ## Prerequisites
 
-### 1. Claude Code
+- **Python 3.11+** with uv or pip
+- **LiveKit Server** running on port 7880
+- **OpenClaw** installed and running on port 18789
+- **Deepgram API key** (free tier: 200 hours)
+- **Modern browser** (Chrome/Edge recommended)
 
-You need Claude Code installed and configured. See the [official documentation](https://docs.anthropic.com/claude-code) for setup.
+## Installation
 
-### 2. Vercel Agent Browser CLI
-
-Install the agent-browser CLI for headless browser automation:
-
-```bash
-npm install -g agent-browser
-agent-browser install  # Downloads Chromium
-```
-
-On Linux, include system dependencies:
-```bash
-agent-browser install --with-deps
-```
-
-This tool allows Claude to verify its work visually by taking screenshots and interacting with your running application.
-
-### 3. Project Setup Files
-
-This repository includes everything you need:
-- `.claude/settings.json` - Sandbox and permissions configuration
-- `.claude/commands/create-prd.md` - The `/create-prd` command
-- `.claude/skills/agent-browser-skill/SKILL.md` - Agent browser instructions
-- `PROMPT.md` - Template for the Ralph loop
-- `ralph.sh` - The bash loop script
-- `activity.md` - Activity logging template
-- `screenshots/` - Directory for visual verification
-
----
-
-## The Process
-
-### Step 1: Create Your PRD with `/create-prd`
-
-Run the `/create-prd` command in Claude Code:
-
-```
-/create-prd
-```
-
-This interactive command will:
-
-1. **Ask discovery questions** one at a time:
-   - What problem are you solving?
-   - Who is your target audience?
-   - What are the 3-5 core features?
-   - What tech stack do you want?
-   - What architecture approach?
-   - UI/UX preferences?
-   - Authentication requirements?
-   - Third-party integrations?
-   - Success criteria?
-
-2. **Research options** if you're unsure about tech stack or architecture
-
-3. **Generate `prd.md`** with:
-   - Complete project requirements
-   - Tech stack decisions
-   - JSON task list with atomic, verifiable tasks
-
-4. **Update `PROMPT.md`** with your specific:
-   - Start commands for your tech stack
-   - Build/lint commands
-   - Project-specific instructions
-
-5. **Update `.claude/settings.json`** with permissions for:
-   - CLI tools required by your tech stack
-   - Any third-party CLIs needed
-   - Commands specific to your project
-
-6. **Create/verify `activity.md`** for logging progress
-
-### Step 2: Verify Your Setup
-
-After `/create-prd` completes, **verify these files before running the loop**:
-
-**Check `prd.md`:**
-- Are all features captured in the task list?
-- Are tasks atomic (completable in one iteration)?
-- Are tasks in the correct dependency order?
-- Is the success criteria clear?
-
-**Check `PROMPT.md`:**
-- Is the start command correct for your tech stack?
-- Are build/lint commands accurate?
-
-**Check `.claude/settings.json`:**
-- Are all necessary CLI tools permitted?
-- Are sensitive files properly denied?
-- Does the agent have what it needs to work autonomously?
-
-This verification step is **critical**. The quality of your Ralph Wiggum run depends entirely on the quality of your PRD and configuration.
-
-### Step 3: Run the Ralph Loop
-
-Once verified, start the autonomous loop:
+### 1. Clone and Install Dependencies
 
 ```bash
-./ralph.sh 20
+cd D:\openclaw
+pip install -e .
 ```
 
-The number is your maximum iterations. Start with 10-20 for smaller projects.
+Or install directly:
 
-The script will:
-1. Read `PROMPT.md` and feed it to Claude
-2. Claude works on one task from `prd.md`
-3. Verifies with agent-browser
-4. Updates task status and logs to `activity.md`
-5. Commits the change
-6. Repeats with a fresh context window
+```bash
+pip install livekit-agents livekit-plugins-silero livekit-plugins-openai \
+    livekit-plugins-deepgram edge-tts python-dotenv pydub aiohttp
+```
 
-The loop exits when:
-- All tasks have `"passes": true` (outputs `<promise>COMPLETE</promise>`)
-- Max iterations reached
+### 2. Configure Environment
 
-### Step 4: Monitor Progress
+Create `.env.local` in the project root:
 
-While Ralph runs, you can monitor:
+```env
+# LiveKit Server
+LIVEKIT_URL=ws://localhost:7880
+LIVEKIT_API_KEY=devkey
+LIVEKIT_API_SECRET=secret
 
-- **`activity.md`** - Detailed log of what was accomplished each iteration
-- **`screenshots/`** - Visual verification of each completed task
-- **Git commits** - One commit per task with clear messages
-- **Terminal output** - Real-time progress
+# Deepgram (Speech-to-Text)
+DEEPGRAM_API_KEY=your_deepgram_api_key
 
----
+# OpenClaw Gateway
+OPENCLAW_BASE_URL=http://localhost:18789/v1
+OPENCLAW_MODEL=openclaw:Phoenix
+OPENCLAW_API_KEY=your_openclaw_gateway_token
 
-## File Reference
+# Edge TTS (Text-to-Speech)
+EDGE_TTS_VOICE=en-US-AriaNeural
+```
 
-### `prd.md` (Generated)
+### 3. Enable OpenClaw Chat Completions
 
-Your Product Requirements Document with a JSON task list:
+Add to `~/.openclaw/openclaw.json` under `gateway`:
 
 ```json
-[
-  {
-    "category": "setup",
-    "description": "Initialize Next.js project with TypeScript",
-    "steps": [
-      "Run create-next-app with TypeScript template",
-      "Install additional dependencies",
-      "Verify dev server starts"
-    ],
-    "passes": false
+{
+  "gateway": {
+    "http": {
+      "endpoints": {
+        "chatCompletions": {
+          "enabled": true
+        }
+      }
+    }
   }
-]
+}
 ```
 
-Tasks should be:
-- **Atomic**: One logical unit of work
-- **Verifiable**: Clear success criteria
-- **Ordered**: Respect dependencies
-- **Categorized**: setup, feature, integration, styling, testing
+Then restart OpenClaw:
 
-### `PROMPT.md`
+```bash
+openclaw gateway restart
+```
 
-Instructions for each iteration. References `@prd.md` and `@activity.md`. Updated by `/create-prd` with your specific start commands.
+## Running the Project
 
-### `.claude/settings.json`
+You need **4 terminals** running simultaneously:
 
-Permissions and sandbox configuration. Updated by `/create-prd` based on your tech stack to ensure the agent can run all necessary commands.
+### Terminal 1: LiveKit Server
 
-Example permissions that might be added based on your PRD:
-- `Bash(prisma:*)` for Prisma CLI
-- `Bash(supabase:*)` for Supabase CLI
-- `Bash(firebase:*)` for Firebase CLI
-- `Bash(vercel:*)` for Vercel CLI
-- `Bash(docker compose:*)` for Docker workflows
+```bash
+livekit-server --dev
+```
 
-### `ralph.sh`
+### Terminal 2: Token Server
 
-The bash loop script. Key features:
-- Fresh context window per iteration
-- Completion detection via `<promise>COMPLETE</promise>`
-- File existence validation
-- Color-coded output
-- Graceful handling of max iterations
+```bash
+cd D:\openclaw
+python token_server.py
+```
 
-### `activity.md`
+Output:
+```
+Token server running on http://localhost:8081/token
+LiveKit URL: ws://localhost:7880
+Room: openclaw-voice
+```
 
-Activity log where the agent records:
-- Date and time
-- Task worked on
-- Changes made
-- Commands run
-- Screenshot filename
-- Issues and resolutions
+### Terminal 3: Voice Agent
 
----
+```bash
+cd D:\openclaw
+python agent.py connect --room openclaw-voice
+```
 
-## Best Practices
+Output:
+```
+INFO:openclaw-agent:Connecting to room: openclaw-voice
+INFO:openclaw-agent:Successfully joined room: openclaw-voice (sid: RM_xxx)
+INFO:openclaw-agent:Starting agent session...
+INFO:openclaw-agent:Agent session started successfully
+```
 
-### 1. Plan Thoroughly
+### Terminal 4: Frontend Server
 
-The `/create-prd` command exists because **planning is everything**. Don't skip the discovery questions. Don't rush through them. A well-defined PRD is the difference between a successful Ralph run and wasted API credits.
+```bash
+cd D:\openclaw\frontend
+python -m http.server 8000
+```
 
-### 2. Keep Scope Tight
+### Open Browser
 
-Ralph Wiggum is for proof of concepts, not production applications. Define the minimum viable version of your idea. You can always iterate later.
+Navigate to: **http://localhost:8000**
 
-### 3. Verify Before Running
+1. Click the mic button to start listening
+2. Speak your message
+3. Wait for the agent to respond with audio
 
-Always review `prd.md`, `PROMPT.md`, and `.claude/settings.json` before starting the loop. Catching issues here saves iterations.
+## Project Structure
 
-### 4. Start with Fewer Iterations
+```
+D:\openclaw\
+├── agent.py                    # Main LiveKit voice agent
+├── token_server.py             # LiveKit token generation server
+├── pyproject.toml              # Python dependencies
+├── .env.local                  # Environment configuration (gitignored)
+├── .gitignore
+├── VOICE_AGENT.md              # This documentation
+├── prd.md                      # Product Requirements Document
+│
+├── plugins/
+│   ├── __init__.py
+│   └── edge_tts_plugin.py      # Custom Edge TTS adapter for LiveKit
+│
+└── frontend/
+    ├── index.html              # Web UI
+    ├── app.js                  # LiveKit JS client logic
+    └── style.css               # Styling
+```
 
-Use 10-20 iterations initially. You can always run more if needed. This prevents runaway costs if something goes wrong.
+## Component Details
 
-### 5. Monitor the First Few Iterations
+### agent.py
 
-Watch the first 2-3 iterations to ensure things are working correctly. Check that:
-- The dev server starts properly
-- Agent-browser can access localhost
-- Tasks are being marked as passing correctly
-- Activity log is being updated
+The main voice agent that:
+- Connects to LiveKit room via `connect` command
+- Processes speech via Deepgram STT (Nova-3 model)
+- Detects turn completion via Silero VAD
+- Sends transcripts to OpenClaw for LLM response
+- Synthesizes audio response via Edge TTS
+- Has 120 second timeout for slow LLM responses
 
-### 6. Use Sandboxing
+### token_server.py
 
-The default `.claude/settings.json` enables sandboxing. This provides isolation for long-running autonomous tasks. Don't disable it unless you have a specific reason.
+Simple aiohttp server that:
+- Listens on port 8081
+- Generates LiveKit room tokens for browser clients
+- Enables CORS for cross-origin requests
+- Returns token + LiveKit URL as JSON
 
----
+### plugins/edge_tts_plugin.py
+
+Custom TTS plugin that:
+- Wraps Microsoft Edge TTS (free, no API key needed)
+- Converts MP3 output to PCM for LiveKit
+- Supports configurable voice selection
+- Streams audio sentence-by-sentence for low latency
+
+### frontend/
+
+Static web app that:
+- Connects to LiveKit via WebRTC
+- Captures microphone audio
+- Plays agent audio responses
+- Shows real-time transcripts
+- Displays connection status
+
+## Configuration Reference
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `LIVEKIT_URL` | LiveKit server WebSocket URL | `ws://localhost:7880` |
+| `LIVEKIT_API_KEY` | LiveKit API key | `devkey` |
+| `LIVEKIT_API_SECRET` | LiveKit API secret | `secret` |
+| `DEEPGRAM_API_KEY` | Deepgram API key for STT | Required |
+| `OPENCLAW_BASE_URL` | OpenClaw gateway URL | `http://localhost:18789/v1` |
+| `OPENCLAW_MODEL` | OpenClaw agent/model ID | `openclaw:Phoenix` |
+| `OPENCLAW_API_KEY` | OpenClaw gateway auth token | Required |
+| `EDGE_TTS_VOICE` | Microsoft Edge TTS voice | `en-US-AriaNeural` |
 
 ## Troubleshooting
 
-### Agent gets stuck in a loop
-- Check if the task is too ambiguous
-- Review `activity.md` to see what it's attempting
-- Consider breaking the task into smaller steps
+### Agent not joining room
 
-### Agent can't access localhost
-- Verify the dev server is running
-- Check that the port in `PROMPT.md` matches your actual port
-- Ensure agent-browser is installed correctly
+Use `connect` mode instead of `dev`:
+```bash
+python agent.py connect --room openclaw-voice
+```
 
-### Permissions errors
-- Review `.claude/settings.json`
-- Add missing CLI tools to the allow list
-- Check that the command pattern matches (e.g., `Bash(npm run:*)`)
+### LLM timeout errors
 
-### Context issues / hallucinations
-- This shouldn't happen with the bash loop (fresh context each iteration)
-- If using the plugin (not recommended), switch to `ralph.sh`
+The agent has a 120-second timeout configured. If still timing out:
+1. Check OpenClaw gateway is running: `openclaw gateway status`
+2. Test the endpoint manually with curl
+3. Check your LLM model is responding
 
-### Max iterations reached without completion
-- Review remaining tasks in `prd.md`
-- Check if tasks are too large or ambiguous
-- Run again with `./ralph.sh 30` or more iterations
+### "Method Not Allowed" from OpenClaw
 
----
+Enable chat completions in OpenClaw config (`~/.openclaw/openclaw.json`):
+```json
+{
+  "gateway": {
+    "http": {
+      "endpoints": {
+        "chatCompletions": { "enabled": true }
+      }
+    }
+  }
+}
+```
 
-## Links
+Then restart: `openclaw gateway restart`
 
-- [Original Ralph Wiggum Guide by JeredBlu](https://github.com/JeredBlu/guides/blob/main/Ralph_Wiggum_Guide.md)
-- [Vercel Agent Browser CLI](https://github.com/vercel-labs/agent-browser)
-- [Claude Code Documentation](https://docs.anthropic.com/claude-code)
-- [Anthropic's Long-Running Agents Blog Post](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents)
+### No audio from agent
+
+1. Check browser console (F12) for errors
+2. Ensure Edge TTS is working: `edge-tts --text "hello" --write-media test.mp3`
+3. Verify agent logs show TTS synthesis
+4. Check browser audio permissions
+
+### Frontend can't connect
+
+1. Ensure token server is running on port 8081
+2. Check browser console for CORS errors
+3. Verify LiveKit server is running on port 7880
+
+### Connection refused errors
+
+Check all services are running:
+```bash
+# LiveKit
+curl http://localhost:7880
+
+# Token server
+curl http://localhost:8081/token
+
+# OpenClaw
+curl http://localhost:18789/v1/chat/completions
+```
+
+## Tech Stack
+
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| Voice Agent | Python + LiveKit Agents 1.4 | Audio pipeline orchestration |
+| STT | Deepgram Nova-3 | Speech-to-text (cloud) |
+| VAD | Silero | Voice activity detection (local) |
+| LLM | OpenClaw Gateway | AI response generation |
+| TTS | Microsoft Edge TTS | Text-to-speech (free, cloud) |
+| WebRTC | LiveKit | Real-time audio streaming |
+| Frontend | Vanilla JS + LiveKit SDK | Browser interface |
+| Token Server | Python aiohttp | LiveKit authentication |
+
+## Quick Start Checklist
+
+- [ ] Python 3.11+ installed
+- [ ] Dependencies installed (`pip install -e .`)
+- [ ] LiveKit server running (`livekit-server --dev`)
+- [ ] OpenClaw running with chatCompletions enabled
+- [ ] Deepgram API key configured
+- [ ] `.env.local` file created
+- [ ] Token server running (`python token_server.py`)
+- [ ] Agent running (`python agent.py connect --room openclaw-voice`)
+- [ ] Frontend served (`python -m http.server 8000`)
+- [ ] Browser open at http://localhost:8000
