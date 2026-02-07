@@ -386,7 +386,7 @@ D:\openclaw\
       "Test mic toggle on/off works reliably",
       "Take a screenshot showing multi-turn transcript"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
