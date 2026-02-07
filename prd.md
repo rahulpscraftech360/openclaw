@@ -324,7 +324,7 @@ D:\openclaw\
       "Add optional transcript panel container",
       "Link to app.js and style.css"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 7,

@@ -2,8 +2,8 @@
 
 ## Current Status
 **Last Updated:** 2026-02-07
-**Tasks Completed:** 5
-**Current Task:** Task 5 complete
+**Tasks Completed:** 6
+**Current Task:** Task 6 complete
 
 ---
 
@@ -84,3 +84,22 @@ Each entry should include:
   - `uv run python -c "import token_server"` — imports successfully
 - **Screenshot:** N/A (backend server, no UI)
 - **Issues:** None
+
+### 2026-02-07 — Task 6: Build the browser frontend HTML structure
+- **Task:** Build the browser frontend HTML structure
+- **Changes made:**
+  - Created `frontend/` directory
+  - Created `frontend/index.html` with semantic HTML5 structure including:
+    - LiveKit JS SDK via CDN (`livekit-client@2.15.7`)
+    - Mic toggle button with SVG icons (mic on/off)
+    - Status indicator area (idle / listening / thinking / speaking)
+    - Transcript panel container
+    - Links to `app.js` and `style.css`
+  - Created stub `frontend/app.js` (placeholder for Task 7)
+  - Created stub `frontend/style.css` with basic dark theme layout (placeholder for Task 8)
+- **Commands run:**
+  - `uv run python -m http.server 8080 --directory frontend --bind 127.0.0.1` — served frontend
+  - `curl http://127.0.0.1:8080/` — verified full HTML response
+  - `curl` verified `style.css` and `app.js` return 200
+- **Screenshot:** N/A (agent-browser daemon failed to start on Windows environment)
+- **Issues:** `agent-browser` daemon fails to start on this Windows environment. Verified via curl instead.
