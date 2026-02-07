@@ -276,7 +276,7 @@ D:\openclaw\
       "Add configurable voice parameter (default: en-US-AriaNeural from env)",
       "Implement sentence-level streaming: split text into sentences, synthesize and yield each as audio frames for low latency"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 4,

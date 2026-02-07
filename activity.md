@@ -2,8 +2,8 @@
 
 ## Current Status
 **Last Updated:** 2026-02-07
-**Tasks Completed:** 2
-**Current Task:** Task 2 complete
+**Tasks Completed:** 3
+**Current Task:** Task 3 complete
 
 ---
 
@@ -40,3 +40,16 @@ Each entry should include:
   - `git status` — verified `.env.local` is properly gitignored (not showing as untracked)
 - **Screenshot:** N/A (setup task, no UI)
 - **Issues:** None
+
+### 2026-02-07 — Task 3: Build custom Edge TTS plugin for LiveKit agents
+- **Task:** Build custom Edge TTS plugin for LiveKit agents
+- **Changes made:**
+  - Created `plugins/__init__.py` exporting the TTS class
+  - Created `plugins/edge_tts_plugin.py` extending `livekit.agents.tts.TTS`
+  - Implements `synthesize()` returning a `ChunkedStream` that uses `edge-tts` library
+  - Audio is streamed as MP3 chunks; LiveKit's `AudioEmitter` handles MP3→PCM decoding internally
+  - Configurable voice via `EDGE_TTS_VOICE` env var (default: `en-US-AriaNeural`)
+- **Commands run:**
+  - `uv run python -c "from plugins.edge_tts_plugin import *"` — imports successfully
+- **Screenshot:** N/A (backend plugin, no UI)
+- **Issues:** Initial import failed because `DEFAULT_API_CONNECT_OPTIONS` is in `livekit.agents.types`, not `livekit.agents.tts`. Fixed the import path.
