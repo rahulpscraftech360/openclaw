@@ -6,26 +6,22 @@ First read activity.md to see what was recently accomplished.
 
 ## Start the Application
 
-This project uses Python with `uv` package manager and a static HTML frontend.
+This project adds a voice streaming endpoint to the OpenClaw gateway (TypeScript/Node.js) and a Python voice client.
 
-**Start the token server:**
+**Start the OpenClaw gateway:**
 ```
-uv run token_server.py
-```
-
-**Start the LiveKit agent:**
-```
-uv run agent.py dev
+cd openclaw && pnpm dev
 ```
 
-**Serve the frontend (port 8080):**
+**Run the Python voice client:**
 ```
-python -m http.server 8080 --directory frontend --bind 127.0.0.1
+uv run voice_client.py
 ```
 
 **Prerequisites (must already be running):**
-- LiveKit Server on port 7880
-- OpenClaw on port 3000 with chatCompletions enabled
+- OpenClaw gateway on port 18789 with cheeko stream enabled
+- Deepgram API key configured (`DEEPGRAM_API_KEY`)
+- OpenAI API key configured (`OPENAI_API_KEY`)
 
 If a port is taken, try another port.
 
@@ -36,8 +32,9 @@ Open prd.md and find the single highest priority task where `"passes": false`.
 Work on exactly ONE task:
 1. Implement the change according to the task steps
 2. Run any available checks:
-   - `uv run python -c "import agent"` (verify agent.py imports cleanly)
-   - `uv run python -c "from plugins.edge_tts_plugin import *"` (verify plugin imports)
+   - Gateway: `cd openclaw && pnpm build` (verify TypeScript compiles)
+   - Client: `uv run python -c "import voice_client"` (verify client imports)
+   - Gateway tests: `cd openclaw && pnpm test` (if applicable)
 
 ## Verify in Browser
 
@@ -91,7 +88,7 @@ Do NOT run `git init`, do NOT change git remotes, and do NOT push.
 ## Important Rules
 
 - ONLY work on a SINGLE task per iteration
-- Always verify in browser before marking a task as passing
+- Always verify before marking a task as passing
 - Always log your progress in activity.md
 - Always commit after completing a task
 

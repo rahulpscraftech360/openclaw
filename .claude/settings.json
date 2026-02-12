@@ -27,7 +27,10 @@
       "Bash(git commit:*)",
       "Bash(uv:*)",
       "Bash(pip:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(tsc:*)",
+      "Bash(tsx:*)",
+      "Bash(vitest:*)"
     ],
     "deny": [
       "Bash(sudo:*)",

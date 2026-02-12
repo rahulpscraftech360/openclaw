@@ -1,9 +1,10 @@
-# OpenClaw Voice Agent - Activity Log
+# OpenClaw Voice Streaming Pipeline - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-02-07
-**Tasks Completed:** 10
-**Current Task:** All tasks complete
+**Last Updated:** 2026-02-12
+**Phase 1 (LiveKit Voice Agent):** Complete (10/10 tasks)
+**Phase 2 (WebSocket Voice Streaming):** 1/9 tasks
+**Current Task:** Task 1 complete — Add Deepgram and OpenAI SDK dependencies
 
 ---
 
@@ -19,159 +20,13 @@ Each entry should include:
 - Screenshot filename (if applicable)
 - Any issues and resolutions
 -->
+<!-- Agent will append dated entries below -->
 
-### 2026-02-07 — Task 1: Initialize Python project
-- **Task:** Initialize Python project with pyproject.toml and install dependencies
-- **Changes made:**
-  - Created `pyproject.toml` with project name `openclaw-voice-agent`, Python >=3.11 requirement, and all dependencies (livekit-agents, livekit-plugins-silero, livekit-plugins-turn-detector, livekit-plugins-openai, livekit-plugins-deepgram, edge-tts, python-dotenv, pydub, aiohttp)
-  - Ran `uv sync` — installed 92 packages, created `.venv/` virtual environment
+### 2026-02-12 — Task 1: Add Deepgram and OpenAI SDK dependencies
+- **Changes:** Added `@deepgram/sdk` (^4.11.3) and `openai` (^6.21.0) to openclaw/package.json dependencies
 - **Commands run:**
-  - `uv sync` — resolved 94 packages, installed 92
-  - `uv run python -c "import livekit.agents; print(livekit.agents.__version__)"` — confirmed version 1.4.1
-- **Screenshot:** N/A (setup task, no UI)
-- **Issues:** Warning about hardlink fallback to copy (different filesystems) — harmless, no action needed
-
-### 2026-02-07 — Task 2: Create .env.local configuration file and .gitignore
-- **Task:** Create .env.local configuration file and update .gitignore
-- **Changes made:**
-  - Created `.env.local` with all required configuration variables: LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, DEEPGRAM_API_KEY (placeholder), OPENCLAW_BASE_URL, OPENCLAW_MODEL, EDGE_TTS_VOICE
-  - Updated `.gitignore` to include `.env.local`, `.venv/`, `__pycache__/`, and `*.pyc`
-- **Commands run:**
-  - `git status` — verified `.env.local` is properly gitignored (not showing as untracked)
-- **Screenshot:** N/A (setup task, no UI)
-- **Issues:** None
-
-### 2026-02-07 — Task 3: Build custom Edge TTS plugin for LiveKit agents
-- **Task:** Build custom Edge TTS plugin for LiveKit agents
-- **Changes made:**
-  - Created `plugins/__init__.py` exporting the TTS class
-  - Created `plugins/edge_tts_plugin.py` extending `livekit.agents.tts.TTS`
-  - Implements `synthesize()` returning a `ChunkedStream` that uses `edge-tts` library
-  - Audio is streamed as MP3 chunks; LiveKit's `AudioEmitter` handles MP3→PCM decoding internally
-  - Configurable voice via `EDGE_TTS_VOICE` env var (default: `en-US-AriaNeural`)
-- **Commands run:**
-  - `uv run python -c "from plugins.edge_tts_plugin import *"` — imports successfully
-- **Screenshot:** N/A (backend plugin, no UI)
-- **Issues:** Initial import failed because `DEFAULT_API_CONNECT_OPTIONS` is in `livekit.agents.types`, not `livekit.agents.tts`. Fixed the import path.
-
-### 2026-02-07 — Task 4: Build the main LiveKit agent with OpenClaw integration
-- **Task:** Build the main LiveKit agent with OpenClaw integration
-- **Changes made:**
-  - Created `agent.py` at project root
-  - Loads environment variables from `.env.local` using `python-dotenv`
-  - Configures Deepgram STT with Nova-3 model
-  - Configures OpenAI-compatible LLM plugin pointing to OpenClaw gateway (`OPENCLAW_BASE_URL`)
-  - Configures custom Edge TTS plugin from `plugins/edge_tts_plugin.py`
-  - Configures Silero VAD (prewarmed in `prewarm()` function)
-  - Creates `AgentSession` wiring STT, LLM, TTS, VAD with turn detection set to "vad"
-  - System instructions set for personal assistant persona
-  - Entrypoint connects to room and starts session
-- **Commands run:**
-  - `uv run python -c "import agent"` — imports successfully
-- **Screenshot:** N/A (backend agent, no UI yet)
-- **Issues:** None
-
-### 2026-02-07 — Task 5: Build the token server for LiveKit room access
-- **Task:** Build the token server for LiveKit room access
-- **Changes made:**
-  - Created `token_server.py` with aiohttp HTTP server on port 8081
-  - Implements `GET /token` endpoint that generates a LiveKit access token with room join permission
-  - Uses `livekit.api.AccessToken` and `VideoGrants` for token generation
-  - CORS headers added via middleware for browser access
-  - Configurable via environment variables (LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_URL)
-  - Default room name: `openclaw-voice`
-- **Commands run:**
-  - `uv run python -c "import token_server"` — imports successfully
-- **Screenshot:** N/A (backend server, no UI)
-- **Issues:** None
-
-### 2026-02-07 — Task 6: Build the browser frontend HTML structure
-- **Task:** Build the browser frontend HTML structure
-- **Changes made:**
-  - Created `frontend/` directory
-  - Created `frontend/index.html` with semantic HTML5 structure including:
-    - LiveKit JS SDK via CDN (`livekit-client@2.15.7`)
-    - Mic toggle button with SVG icons (mic on/off)
-    - Status indicator area (idle / listening / thinking / speaking)
-    - Transcript panel container
-    - Links to `app.js` and `style.css`
-  - Created stub `frontend/app.js` (placeholder for Task 7)
-  - Created stub `frontend/style.css` with basic dark theme layout (placeholder for Task 8)
-- **Commands run:**
-  - `uv run python -m http.server 8080 --directory frontend --bind 127.0.0.1` — served frontend
-  - `curl http://127.0.0.1:8080/` — verified full HTML response
-  - `curl` verified `style.css` and `app.js` return 200
-- **Screenshot:** N/A (agent-browser daemon failed to start on Windows environment)
-- **Issues:** `agent-browser` daemon fails to start on this Windows environment. Verified via curl instead.
-
-### 2026-02-07 — Task 7: Implement frontend JavaScript with LiveKit client logic
-- **Task:** Implement frontend JavaScript with LiveKit client logic
-- **Changes made:**
-  - Implemented `frontend/app.js` with full LiveKit client logic:
-    - Token fetching from `http://localhost:8081/token`
-    - Room connection via LiveKit JS SDK
-    - Room events: TrackSubscribed, TrackUnsubscribed, ParticipantConnected, Disconnected
-    - Mic toggle: publish/unpublish local audio track via `setMicrophoneEnabled()`
-    - Incoming audio tracks auto-attached to DOM
-    - Transcript display via `lk.transcription` text stream handler
-    - UI state management (idle, connecting, listening, speaking)
-    - Segment-based transcript updates (deduplication via segment ID)
-- **Commands run:**
-  - `curl http://127.0.0.1:8080/app.js` — verified JS file served correctly
-- **Screenshot:** N/A (agent-browser daemon unavailable)
-- **Issues:** None
-
-### 2026-02-07 — Task 8: Style the frontend with clean, minimal CSS
-- **Task:** Style the frontend with clean, minimal CSS
-- **Changes made:**
-  - Fully styled `frontend/style.css` with dark-themed, centered layout
-  - Mic button with clear on/off states (green glow when active, gray when inactive)
-  - Animated status indicators:
-    - Idle: gray dot
-    - Connecting: orange pulsing dot
-    - Listening: green pulsing dot with glow
-    - Thinking: blue spinning dot
-    - Speaking: purple waving dot with glow
-  - Transcript panel with auto-scroll, styled scrollbar, user (green) and agent (purple) message styling
-  - Responsive design for mobile screens
-  - Smooth transitions between all UI states
-- **Commands run:**
-  - `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/style.css` — returns 200
-- **Screenshot:** N/A (agent-browser daemon unavailable)
-- **Issues:** None
-
-### 2026-02-07 — Task 9: End-to-end integration test
-- **Task:** End-to-end integration test: speak and hear response
-- **Changes made:**
-  - Fixed `token_server.py`: `with_ttl()` requires `timedelta`, not `int` — changed to `timedelta(hours=1)`
-  - Created `screenshots/` directory
-- **Verification results:**
-  - LiveKit Server: running on port 7880 (confirmed via curl)
-  - OpenClaw: NOT running on port 3000 (external prerequisite — user must start separately)
-  - Token server (`uv run token_server.py`): starts successfully, returns valid JWT tokens
-  - Agent (`uv run agent.py dev`): starts successfully, registers with LiveKit server
-  - Frontend (`python -m http.server 8080 --directory frontend`): serves HTML/JS/CSS correctly
-  - Token endpoint test: `curl http://127.0.0.1:8081/token` returns valid JWT with room join grants
-- **Commands run:**
-  - `curl http://localhost:7880` — LiveKit server responding (200)
-  - `curl http://localhost:3000` — OpenClaw not running
-  - `uv run token_server.py` — started successfully
-  - `curl http://127.0.0.1:8081/token` — returns valid JWT
-  - `uv run agent.py dev` — agent registered with LiveKit
-  - `uv run python -m http.server 8080 --directory frontend` — frontend served
-- **Screenshot:** N/A (agent-browser daemon unavailable; OpenClaw not running for full E2E)
-- **Issues:** OpenClaw not running — full voice E2E test requires user to start OpenClaw separately. All other components verified working.
-
-### 2026-02-07 — Task 10: Multi-turn conversation test and latency verification
-- **Task:** Multi-turn conversation test and latency verification
-- **Changes made:**
-  - Fixed `agent.py`: was loading `.env` instead of `.env.local` — corrected to `load_dotenv(".env.local")`
-  - Code review confirmed multi-turn support:
-    - `AgentSession` maintains chat context internally (LLM plugin sends full conversation history)
-    - Frontend transcript accumulates messages with unique segment IDs
-    - `updateTranscript()` deduplicates by segment ID for in-progress updates
-    - Mic toggle works via `setMicrophoneEnabled()` on localParticipant
-- **Commands run:**
-  - `uv run python -c "import agent"` — imports successfully after fix
-- **Screenshot:** N/A (full E2E requires OpenClaw running)
-- **Issues:** Full multi-turn test requires OpenClaw to be running. Code-level verification confirms all components support multi-turn conversations.
+  - `pnpm add -w @deepgram/sdk openai` — installed both packages
+  - Created temporary `test-sdk-imports.mjs` to verify both SDKs import correctly (Deepgram `createClient` and OpenAI default export both resolved as functions)
+  - `pnpm build` — TypeScript build succeeded with no errors
+- **Issues:** `pnpm add` required `-w` flag since openclaw uses a workspace root setup
+- **Result:** Task passes — both SDKs installed and verified
