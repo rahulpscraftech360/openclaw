@@ -15,7 +15,12 @@
       "Bash(taskkill:*)",
       "Bash(openclaw gateway reload:*)",
       "Bash(openclaw reload:*)",
-      "Bash(openclaw config reload:*)"
+      "Bash(openclaw config reload:*)",
+      "Bash(xargs:*)",
+      "Bash(node --version:*)",
+      "Bash(echo:*)",
+      "Bash(set:*)",
+      "Bash(powershell:*)"
     ]
   }
 }
