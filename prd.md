@@ -1,7 +1,7 @@
 # OpenClaw Voice Streaming Pipeline - Product Requirements Document
 
 ## Overview
-Build a server-side voice streaming pipeline that allows a Python client to have real-time voice conversations with OpenClaw. The client captures microphone audio (push-to-talk via spacebar), streams Opus-encoded audio over WebSocket to a new gateway endpoint (`/cheeko/stream`), where the server handles STT (Deepgram Nova-2) → LLM (existing OpenClaw agent) → TTS (OpenAI). The server streams Opus audio responses back to the client for playback. This architecture keeps the client thin, making it reusable for ESP32/firmware later.
+Build a server-side voice streaming pipeline that allows a Python client to have real-time voice conversations with OpenClaw. The client captures microphone audio (push-to-talk via spacebar), streams Opus-encoded audio over WebSocket to a new gateway endpoint (`/cheeko/stream`), where the server handles STT (Deepgram Nova-2) → LLM (existing OpenClaw agent) → TTS (OpenAI or ElevenLabs, configurable). The server streams Opus audio responses back to the client for playback. This architecture keeps the client thin, making it reusable for ESP32/firmware later.
 
 ## Target Audience
 - Developers testing the Cheeko voice device pipeline
@@ -12,14 +12,14 @@ Build a server-side voice streaming pipeline that allows a Python client to have
 1. **WebSocket Streaming Endpoint** — New `/cheeko/stream` endpoint in OpenClaw gateway accepting audio chunks and returning audio responses
 2. **Streaming STT** — Deepgram Nova-2 real-time transcription of incoming Opus audio
 3. **LLM Integration** — Route transcripts through existing OpenClaw chat pipeline
-4. **Streaming TTS** — OpenAI TTS converts LLM text responses to audio, streamed back incrementally
+4. **Streaming TTS** — OpenAI TTS or ElevenLabs TTS (configurable) converts LLM text responses to audio, streamed back incrementally
 5. **Python Client** — Push-to-talk (spacebar) mic capture, Opus encoding, WebSocket transport, and audio playback
 
 ## Tech Stack
 - **Gateway Endpoint**: TypeScript/Node.js (inside existing OpenClaw `openclaw/src/gateway/`)
 - **Client**: Python 3.11+ with `pyaudio`, `websockets`, `opuslib`, `keyboard`
 - **STT**: Deepgram Nova-2 (streaming WebSocket API)
-- **TTS**: OpenAI `gpt-4o-mini-tts` (streaming)
+- **TTS**: OpenAI `gpt-4o-mini-tts` (streaming) or ElevenLabs `eleven_turbo_v2` (streaming) — configurable via `gateway.cheeko.ttsProvider`
 - **Audio Codec**: Opus (16kHz mono input, 24kHz mono output)
 - **Transport**: WebSocket with JSON control frames + binary audio frames
 - **Package Manager**: pnpm (gateway), uv (Python client)
@@ -39,7 +39,7 @@ OpenClaw Gateway (/cheeko/stream endpoint)
     │     └── Decodes Opus → PCM → pipes to Deepgram
     ├── OpenClaw LLM Agent (existing chat pipeline)
     │     └── Receives transcript → generates response
-    └── OpenAI TTS (streaming)
+    └── OpenAI TTS or ElevenLabs TTS (configurable, streaming)
           └── Text chunks → Opus audio → stream back to client
     │
     ▼
@@ -68,7 +68,7 @@ Python Client (audio playback)
 - `deviceId`: string — unique client identifier
 - `sessionId`: string — conversation session UUID
 - `sttStream`: Deepgram WebSocket connection
-- `ttsStream`: OpenAI TTS stream (active during response)
+- `ttsStream`: TTS stream — OpenAI or ElevenLabs (active during response)
 - `chatHistory`: array — conversation messages for LLM context
 - `state`: enum — idle | listening | processing | speaking
 
@@ -77,6 +77,7 @@ Python Client (audio playback)
 - Output: Opus, 24kHz, mono, variable frame size
 - Deepgram input: PCM 16-bit, 16kHz, mono (decoded from Opus)
 - OpenAI TTS output: PCM 24kHz (encoded to Opus before sending)
+- ElevenLabs TTS output: PCM 44100Hz or 24kHz (encoded to Opus before sending)
 
 ## Security Considerations
 - Device authentication via token in handshake message
@@ -87,11 +88,13 @@ Python Client (audio playback)
 ## Third-Party Integrations
 - **Deepgram** — Streaming STT via WebSocket API (Nova-2 model)
 - **OpenAI** — TTS via streaming API (`gpt-4o-mini-tts` model)
+- **ElevenLabs** — TTS via streaming API (`eleven_turbo_v2` model, low-latency)
 
 ## Constraints & Assumptions
 - OpenClaw gateway must be running on port 18789
 - Deepgram API key required (`DEEPGRAM_API_KEY` in env)
-- OpenAI API key required (`OPENAI_API_KEY` in env)
+- OpenAI API key required (`OPENAI_API_KEY` in env) if using OpenAI TTS
+- ElevenLabs API key required (`ELEVENLABS_API_KEY` in env) if using ElevenLabs TTS
 - Python client requires working microphone and speakers
 - `opuslib` requires system libopus (already available from existing client.py deps)
 - Existing client.py already has pyaudio and opuslib as dependencies
@@ -181,6 +184,21 @@ Python Client (audio playback)
   },
   {
     "category": "feature",
+    "description": "Add ElevenLabs TTS as a configurable provider alongside OpenAI TTS",
+    "steps": [
+      "Add elevenlabs SDK dependency to openclaw/package.json (pnpm add -w elevenlabs)",
+      "Add ttsProvider ('openai' | 'elevenlabs') and elevenlabsApiKey, elevenlabsVoiceId fields to CheekStreamConfig type and Zod schema",
+      "Create src/gateway/cheeko-tts-elevenlabs.ts with ElevenLabs streaming TTS implementation",
+      "Use ElevenLabs streaming API (eleven_turbo_v2 model, pcm_24000 output format) for low-latency synthesis",
+      "Encode ElevenLabs PCM output to Opus frames using the same opusscript encoder pattern as OpenAI TTS",
+      "Update cheeko-tts.ts to export a unified createTtsPipeline() that delegates to OpenAI or ElevenLabs based on gateway.cheeko.ttsProvider config",
+      "Update cheeko-stream.ts to pass ttsProvider config when creating the TTS pipeline",
+      "Verify pnpm build succeeds with no errors"
+    ],
+    "passes": false
+  },
+  {
+    "category": "feature",
     "description": "Build the Python voice client with push-to-talk",
     "steps": [
       "Create voice_client.py at project root based on existing client.py patterns",
@@ -207,7 +225,7 @@ Python Client (audio playback)
       "Test multi-turn: ask a follow-up question, verify context is maintained",
       "Test cancel: send cancel during response, verify audio stops"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "testing",

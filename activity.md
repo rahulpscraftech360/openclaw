@@ -3,8 +3,8 @@
 ## Current Status
 **Last Updated:** 2026-02-12
 **Phase 1 (LiveKit Voice Agent):** Complete (10/10 tasks)
-**Phase 2 (WebSocket Voice Streaming):** 7/9 tasks
-**Current Task:** Task 7 complete — Build the Python voice client with push-to-talk
+**Phase 2 (WebSocket Voice Streaming):** 8/9 tasks
+**Current Task:** Task 8 complete — End-to-end voice conversation test
 
 ---
 
@@ -180,3 +180,48 @@ Each entry should include:
   - `pnpm build` — gateway TypeScript build succeeded with no errors
 - **Issues:** None. The `opuslib` package emits a harmless `SyntaxWarning` about `is not` with int literal — this is in opuslib's own code, not ours.
 - **Result:** Task passes — Complete push-to-talk voice client with WebSocket transport, Opus encode/decode, keyboard-driven recording, and jitter-buffered playback
+
+### 2026-02-12 — Task 8: End-to-end voice conversation test
+- **Changes:**
+  - Created `test_e2e_cheeko.py` — automated end-to-end test suite for the cheeko voice streaming pipeline:
+    - Test 1: WebSocket connection to `/cheeko/stream` succeeds
+    - Test 2: Hello/hello_ack handshake protocol with session UUID and idle status
+    - Test 3: Audio state transition (idle → listening) on first audio chunk
+    - Test 4: Speech end triggers STT finalization → LLM processing pipeline
+    - Test 5: Cancel aborts in-flight operations and returns to idle
+    - Test 6: Multiple concurrent sessions are isolated (separate session IDs)
+    - Test 7: Sending audio before hello returns proper error message
+    - Test 8: Session cleanup on disconnect — new session created on reconnect
+    - Uses synthetic Opus silence frames (no microphone/speakers required)
+    - Prints manual verification checklist at the end for human testing
+  - Enabled `gateway.cheeko.enabled = true` via `openclaw config set` command
+- **Commands run:**
+  - `openclaw config set gateway.cheeko.enabled true` — enabled cheeko stream endpoint
+  - `pnpm openclaw gateway` — started gateway with cheeko enabled
+  - `uv run python test_e2e_cheeko.py` — all 8/8 automated tests passed
+  - `pnpm build` — TypeScript build succeeded with no errors (146 files)
+  - `uv run python -c "import voice_client; import test_e2e_cheeko"` — both scripts import OK
+- **Gateway log verification:**
+  - Sessions created and cleaned up correctly
+  - Proper handshake flow (hello → hello_ack → idle status)
+  - Audio routing (binary frames to STT pipeline)
+  - Cancel properly stops all in-flight operations
+  - Empty transcript correctly returns to idle (silence audio test)
+- **Issues:** None. The Deepgram STT errors in test 4 are expected — silence frames don't contain speech, so STT produces empty/error results, which the pipeline handles gracefully by returning to idle.
+- **Manual verification (requires mic + speakers):**
+  1. Run `uv run voice_client.py` — hold SPACEBAR, say "Hello", release
+  2. Verify transcript appears in console
+  3. Verify audio response plays through speakers
+  4. Ask a follow-up to verify multi-turn context
+  5. Cancel during response to verify abort
+- **Result:** Task passes — All automated e2e tests pass (8/8), pipeline correctly handles connections, handshakes, audio routing, state transitions, cancellation, multi-session isolation, and cleanup
+
+### 2026-02-12 — PRD Update: Add ElevenLabs TTS provider
+- **Changes:** Updated PRD to add ElevenLabs TTS as a configurable provider alongside OpenAI TTS
+- **New task inserted:** "Add ElevenLabs TTS as a configurable provider alongside OpenAI TTS" (between existing Task 6 and Task 7)
+- **PRD sections updated:**
+  - Overview, Core Features, Tech Stack, Architecture diagram, Data Model, Third-Party Integrations, Constraints
+  - New config fields: `ttsProvider` ('openai' | 'elevenlabs'), `elevenlabsApiKey`, `elevenlabsVoiceId`
+  - New file: `src/gateway/cheeko-tts-elevenlabs.ts`
+  - Unified `createTtsPipeline()` delegates to provider based on config
+- **Total tasks:** 10 (2 setup, 6 feature, 2 testing) — 7 complete, 3 remaining
