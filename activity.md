@@ -3,8 +3,8 @@
 ## Current Status
 **Last Updated:** 2026-02-12
 **Phase 1 (LiveKit Voice Agent):** Complete (10/10 tasks)
-**Phase 2 (WebSocket Voice Streaming):** 5/9 tasks
-**Current Task:** Task 5 complete — Implement LLM routing through existing OpenClaw chat pipeline
+**Phase 2 (WebSocket Voice Streaming):** 6/9 tasks
+**Current Task:** Task 6 complete — Implement OpenAI TTS streaming with Opus encoding
 
 ---
 
@@ -126,3 +126,28 @@ Each entry should include:
   - `pnpm build` — TypeScript build succeeded with no errors (144 files, build complete)
 - **Issues:** None. The agent event system emits `data.text` as accumulated full text and `data.delta` as incremental chunks — the sentence buffer correctly uses `delta` for streaming.
 - **Result:** Task passes — LLM routing fully integrated, transcripts flow through OpenClaw agent pipeline with sentence-chunked streaming text responses
+
+### 2026-02-12 — Task 6: Implement OpenAI TTS streaming with Opus encoding
+- **Changes:**
+  - Added `opusscript` dependency (`^0.1.1`) for PCM-to-Opus encoding
+  - Created `src/gateway/cheeko-tts.ts` — TTS service wrapper with two main exports:
+    - `streamTts()`: Calls OpenAI TTS API (`gpt-4o-mini-tts` model, `pcm` response format) for a single sentence, encodes the returned 24kHz 16-bit mono PCM into Opus frames (20ms, 480 samples/frame) via opusscript (VOIP mode, 32kbps bitrate), and delivers each Opus frame via callback
+    - `createTtsPipeline()`: Manages sequential TTS for an entire LLM response — sentences are queued and processed one at a time to maintain natural ordering, with `pushSentence()`, `finish()`, and `abort()` methods
+    - Handles partial frame padding (silence-pad remaining PCM that doesn't fill a full 20ms frame)
+    - Proper abort support via AbortController and cleanup of opusscript encoder instances
+  - Modified `src/gateway/cheeko-stream.ts`:
+    - Imported `createTtsPipeline` from cheeko-tts
+    - Added `ttsPipeline` field to `CheekStreamSession` type
+    - `handleSpeechEnd()` now creates a TTS pipeline before dispatching to LLM:
+      - `onTextChunk` callback feeds sentence-sized text chunks into `ttsPipeline.pushSentence()`
+      - `onComplete` transitions to `"speaking"` state and calls `ttsPipeline.finish()`
+      - TTS pipeline's `onOpusFrame` sends binary Opus frames over WebSocket to client
+      - TTS pipeline's `onComplete` sends `{ type: "audio_end" }` and returns to idle
+    - Added `abortTts()` helper for clean TTS teardown
+    - `handleCancel()` now calls `abortTts()` to stop in-flight TTS
+    - `cleanupSession()` now calls `abortTts()` for proper resource cleanup on disconnect
+- **Commands run:**
+  - `pnpm add -w opusscript` — installed opusscript (^0.1.1)
+  - `pnpm build` — TypeScript build succeeded with no errors (144 files, build complete)
+- **Issues:** None. OpenAI TTS API supports `response_format: "pcm"` which returns raw 24kHz 16-bit mono PCM, ideal for encoding to Opus with opusscript. No need for intermediate format conversion.
+- **Result:** Task passes — Full TTS pipeline integrated: LLM sentence chunks → OpenAI TTS (PCM) → Opus encoding → binary WebSocket frames to client, with sequential sentence ordering and abort support

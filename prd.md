@@ -177,7 +177,7 @@ Python Client (audio playback)
       "Send Opus frames as binary WebSocket messages to client",
       "Send audio_end JSON message when response is complete"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
