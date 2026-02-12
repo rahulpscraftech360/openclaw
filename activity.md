@@ -3,8 +3,8 @@
 ## Current Status
 **Last Updated:** 2026-02-12
 **Phase 1 (LiveKit Voice Agent):** Complete (10/10 tasks)
-**Phase 2 (WebSocket Voice Streaming):** 4/9 tasks
-**Current Task:** Task 4 complete — Implement Opus decoding and Deepgram streaming STT integration
+**Phase 2 (WebSocket Voice Streaming):** 5/9 tasks
+**Current Task:** Task 5 complete — Implement LLM routing through existing OpenClaw chat pipeline
 
 ---
 
@@ -95,3 +95,34 @@ Each entry should include:
   - `pnpm build` — TypeScript build succeeded with no errors (146 files, build complete)
 - **Issues:** None. Originally planned to use opusscript for Opus→PCM decoding, but Deepgram natively supports `encoding: "opus"` so raw Opus frames are sent directly, eliminating the need for an Opus decoder dependency.
 - **Result:** Task passes — Deepgram streaming STT fully integrated into cheeko-stream pipeline
+
+### 2026-02-12 — Task 5: Implement LLM routing through existing OpenClaw chat pipeline
+- **Changes:**
+  - Created `src/gateway/cheeko-chat.ts` — chat service wrapper for routing voice transcripts through the OpenClaw LLM pipeline:
+    - `sendChatMessage()` factory accepts transcript, sessionKey, log, and callbacks
+    - Builds `MsgContext` matching the `chat.send` handler pattern (Body, BodyForAgent, SessionKey, Provider, etc.)
+    - Calls `dispatchInboundMessage()` to route through existing agent pipeline
+    - Subscribes to `onAgentEvent()` for streaming text — uses `evt.data.delta` for incremental text and `evt.data.text` for accumulated full text
+    - `createSentenceBuffer()` splits streamed text on sentence boundaries (`.!?` followed by whitespace) for TTS-sized chunks
+    - Handles lifecycle events: `phase: "end"` flushes remaining buffer and calls `onComplete`, `phase: "error"` calls `onError`
+    - Returns `CheekChatHandle` with `abort()` method that cancels the `AbortController` and unsubscribes from events
+    - Uses `registerAgentRunContext()` so agent events are enriched with sessionKey
+    - Session key pattern: `voice:{deviceId}` for per-device voice conversation sessions
+  - Modified `src/gateway/cheeko-stream.ts`:
+    - Imported `sendChatMessage` and `CheekChatHandle` from cheeko-chat
+    - Added `chatHandle: CheekChatHandle | null` field to `CheekStreamSession` type
+    - `handleSpeechEnd()` now routes transcript through LLM:
+      - Checks for empty transcript (returns to idle if empty)
+      - Adds user message to `session.chatHistory`
+      - Sends `"thinking"` status to client
+      - Calls `sendChatMessage()` with callbacks for text chunks, completion, and errors
+      - `onTextChunk`: sends `{ type: "response_text", text, partial: true }` to client
+      - `onComplete`: pushes assistant response to chatHistory, sends final `response_text`, returns to idle
+      - `onError`: sends error and returns to idle
+    - Added `abortChat()` helper to abort in-flight LLM runs
+    - `handleCancel()` now calls `abortChat()` to abort LLM in addition to closing STT
+    - `cleanupSession()` now calls `abortChat()` for proper resource cleanup on disconnect
+- **Commands run:**
+  - `pnpm build` — TypeScript build succeeded with no errors (144 files, build complete)
+- **Issues:** None. The agent event system emits `data.text` as accumulated full text and `data.delta` as incremental chunks — the sentence buffer correctly uses `delta` for streaming.
+- **Result:** Task passes — LLM routing fully integrated, transcripts flow through OpenClaw agent pipeline with sentence-chunked streaming text responses

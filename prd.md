@@ -164,7 +164,7 @@ Python Client (audio playback)
       "Maintain conversation history per session for multi-turn context",
       "Send status updates to client (thinking, speaking stages)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
