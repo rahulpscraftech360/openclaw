@@ -237,7 +237,7 @@ Python Client (audio playback)
       "Verify graceful error messages for each failure case",
       "Verify session cleanup after disconnection"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

@@ -3,8 +3,8 @@
 ## Current Status
 **Last Updated:** 2026-02-12
 **Phase 1 (LiveKit Voice Agent):** Complete (10/10 tasks)
-**Phase 2 (WebSocket Voice Streaming):** 9/10 tasks
-**Current Task:** Task 7 (new) complete — Add ElevenLabs TTS as configurable provider
+**Phase 2 (WebSocket Voice Streaming):** Complete (10/10 tasks)
+**Current Task:** All tasks complete
 
 ---
 
@@ -249,3 +249,39 @@ Each entry should include:
   - `uv run python -c "import voice_client; import test_e2e_cheeko"` — both imports pass
 - **Issues:** None. No ElevenLabs SDK dependency needed — the existing codebase pattern uses direct `fetch` against the ElevenLabs REST API, which is cleaner and avoids an extra dependency.
 - **Result:** Task passes — ElevenLabs TTS fully integrated as configurable provider, unified pipeline delegates based on `gateway.cheeko.ttsProvider` config
+
+### 2026-02-12 — Task 10: Latency measurement and error handling verification
+- **Changes:**
+  - Modified `src/gateway/cheeko-stream.ts`:
+    - Added `speechEndAt` and `firstAudioSent` timing fields to `CheekStreamSession` type
+    - Records `Date.now()` timestamp when `speech_end` is received
+    - Logs latency (ms) from `speech_end` to first TTS audio frame sent back to client
+    - Sends `{ type: "latency", speechEndToFirstAudio: <ms> }` JSON message to client on first audio frame
+  - Created `test_latency_errors.py` — comprehensive latency and error handling test suite (7 tests):
+    - Test 1: Latency instrumentation — runs 5 speech_end queries and measures roundtrip time
+    - Test 2: Disconnect mid-stream — abruptly disconnects during processing, verifies reconnection works
+    - Test 3: Invalid audio data — sends garbage binary data (not valid Opus), verifies graceful error handling
+    - Test 4: Speech end without audio — sends speech_end before any audio, verifies "not currently listening" error
+    - Test 5: Invalid JSON / unknown message types — tests malformed JSON, unknown types, missing type field
+    - Test 6: Session cleanup after disconnection — verifies old session freed, new session works on reconnect
+    - Test 7: Rapid reconnection stress test — 5 rapid connect/disconnect cycles, verifies all sessions unique
+- **Commands run:**
+  - `pnpm build` — TypeScript build succeeded with no errors (146 files, build complete)
+  - `uv run python -c "import test_latency_errors"` — import verification passed
+  - `pnpm openclaw gateway` — started gateway with cheeko enabled
+  - `uv run python test_latency_errors.py` — all 7/7 tests passed
+  - `uv run python test_e2e_cheeko.py` — all 8/8 existing e2e tests still pass (no regressions)
+- **Latency results (silence-based, no real STT/LLM/TTS):**
+  - 5 queries: 5ms, 5ms, 7ms, 8ms, 5ms
+  - Avg: 6ms, Min: 5ms, Max: 8ms
+  - Note: Real latency with spoken audio through STT->LLM->TTS will be higher (target <1500ms)
+- **Error handling verified:**
+  - Disconnect mid-stream: Server cleans up session, reconnection succeeds with new session
+  - Invalid audio: Server reports STT error gracefully, returns to idle
+  - Missing API keys: Server sends "Deepgram API key not configured" error
+  - Speech end without audio: "not currently listening" error
+  - Invalid JSON: "invalid JSON control message" error
+  - Unknown message type: "unknown message type: foobar_unknown" error
+  - Session cleanup: Old session resources freed, new session works correctly
+- **Issues:** None
+- **Result:** Task passes — Latency instrumentation added, all error scenarios handled gracefully, session cleanup verified
