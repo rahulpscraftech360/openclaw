@@ -3,8 +3,8 @@
 ## Current Status
 **Last Updated:** 2026-02-12
 **Phase 1 (LiveKit Voice Agent):** Complete (10/10 tasks)
-**Phase 2 (WebSocket Voice Streaming):** 6/9 tasks
-**Current Task:** Task 6 complete — Implement OpenAI TTS streaming with Opus encoding
+**Phase 2 (WebSocket Voice Streaming):** 7/9 tasks
+**Current Task:** Task 7 complete — Build the Python voice client with push-to-talk
 
 ---
 
@@ -151,3 +151,32 @@ Each entry should include:
   - `pnpm build` — TypeScript build succeeded with no errors (144 files, build complete)
 - **Issues:** None. OpenAI TTS API supports `response_format: "pcm"` which returns raw 24kHz 16-bit mono PCM, ideal for encoding to Opus with opusscript. No need for intermediate format conversion.
 - **Result:** Task passes — Full TTS pipeline integrated: LLM sentence chunks → OpenAI TTS (PCM) → Opus encoding → binary WebSocket frames to client, with sequential sentence ordering and abort support
+
+### 2026-02-12 — Task 7: Build the Python voice client with push-to-talk
+- **Changes:**
+  - Created `voice_client.py` at project root — standalone push-to-talk voice client:
+    - WebSocket connection to `ws://localhost:18789/cheeko/stream` using `websocket-client` library
+    - `on_open` sends `hello` handshake with auto-generated `deviceId`
+    - `on_message` routes text (JSON) and binary (Opus audio) frames:
+      - `hello_ack` — stores sessionId, unblocks startup
+      - `transcript` — prints partial/final STT results with `...`/`YOU:` prefixes
+      - `response_text` — prints final AI response
+      - `audio_end` — signals playback thread to drain remaining buffer
+      - `status` — displays `[thinking...]` and `[speaking...]` indicators
+      - `error` — logs server errors
+    - Push-to-talk via `keyboard` library:
+      - `SPACEBAR hold` → starts mic capture thread (`start_recording`)
+      - `SPACEBAR release` → stops recording, sends `speech_end` JSON
+      - `ESCAPE` → graceful shutdown
+    - Recording thread: opens PyAudio input stream (16kHz mono, 20ms frames), encodes PCM to Opus via `opuslib.Encoder`, sends as binary WebSocket frames
+    - Playback thread: jitter buffer (8 frames start threshold, 2 frames min), decodes incoming Opus frames via `opuslib.Decoder` (24kHz mono), writes PCM to PyAudio output stream
+    - Handles `audio_end` to flush remaining buffered frames even if below start threshold
+    - Graceful cleanup on Ctrl+C and Escape key
+  - Updated `pyproject.toml`:
+    - Added `websocket-client`, `keyboard`, `pyaudio`, `opuslib` to dependencies
+- **Commands run:**
+  - `uv pip install websocket-client keyboard` — installed both packages
+  - `uv run python -c "import voice_client"` — import verification passed
+  - `pnpm build` — gateway TypeScript build succeeded with no errors
+- **Issues:** None. The `opuslib` package emits a harmless `SyntaxWarning` about `is not` with int literal — this is in opuslib's own code, not ours.
+- **Result:** Task passes — Complete push-to-talk voice client with WebSocket transport, Opus encode/decode, keyboard-driven recording, and jitter-buffered playback

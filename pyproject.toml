@@ -13,4 +13,8 @@ dependencies = [
     "python-dotenv",
     "pydub",
     "aiohttp",
+    "websocket-client",
+    "keyboard",
+    "pyaudio",
+    "opuslib",
 ]

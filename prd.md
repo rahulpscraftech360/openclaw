@@ -193,7 +193,7 @@ Python Client (audio playback)
       "Decode incoming Opus audio frames and play through speakers via pyaudio",
       "Add graceful cleanup on Ctrl+C"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "testing",
