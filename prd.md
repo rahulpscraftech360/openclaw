@@ -138,7 +138,7 @@ Python Client (audio playback)
       "Register the endpoint in src/gateway/server-http.ts at path /cheeko/stream",
       "Add session cleanup on disconnect"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

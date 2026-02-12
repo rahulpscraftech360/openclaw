@@ -3,8 +3,8 @@
 ## Current Status
 **Last Updated:** 2026-02-12
 **Phase 1 (LiveKit Voice Agent):** Complete (10/10 tasks)
-**Phase 2 (WebSocket Voice Streaming):** 2/9 tasks
-**Current Task:** Task 2 complete — Add environment variable configuration for voice streaming
+**Phase 2 (WebSocket Voice Streaming):** 3/9 tasks
+**Current Task:** Task 3 complete — Create the /cheeko/stream WebSocket endpoint handler
 
 ---
 
@@ -42,3 +42,33 @@ Each entry should include:
   - `pnpm build` — TypeScript build succeeded with no errors (146 files, build complete)
 - **Issues:** None
 - **Result:** Task passes — cheeko config section fully integrated into OpenClaw config schema
+
+### 2026-02-12 — Task 3: Create the /cheeko/stream WebSocket endpoint handler
+- **Changes:**
+  - Created `src/gateway/cheeko-stream.ts` — standalone WebSocket handler for `/cheeko/stream` with:
+    - Dedicated `WebSocketServer` (noServer mode) for the cheeko stream path
+    - `handleUpgrade()` that intercepts `/cheeko/stream` upgrade requests
+    - Connection handshake: validates `hello` JSON message, creates session with UUID, sends `hello_ack`
+    - Message routing: binary frames → audio chunk handler (stub for Task 4 STT), JSON frames → control message handler
+    - Control messages: `hello`, `speech_end`, `cancel` with proper state transitions (idle→listening→processing→speaking)
+    - Session state: `CheekStreamSession` type with sessionId, deviceId, ws, state, chatHistory
+    - Session cleanup on disconnect (resource cleanup stubs for Tasks 4-6)
+    - Handshake timeout (10s) — closes connection if no `hello` received
+    - Status notifications sent to client at each state transition
+  - Modified `src/gateway/server-http.ts`:
+    - Added optional `cheekStreamHandler` parameter to `attachGatewayUpgradeHandler()`
+    - Cheeko stream intercepts upgrade requests before canvas and main WSS handlers
+  - Modified `src/gateway/server-runtime-state.ts`:
+    - Creates cheeko stream handler with config getter and logger
+    - Passes handler to all HTTP server upgrade handlers
+    - Returns `cheekStreamClose` for graceful shutdown
+  - Modified `src/gateway/server.impl.ts`:
+    - Destructures `cheekStreamClose` from runtime state
+    - Passes it to `createGatewayCloseHandler()`
+  - Modified `src/gateway/server-close.ts`:
+    - Added optional `cheekStreamClose` parameter
+    - Calls cleanup before main WSS close during shutdown
+- **Commands run:**
+  - `pnpm build` — TypeScript build succeeded with no errors (146 files)
+- **Issues:** None
+- **Result:** Task passes — `/cheeko/stream` WebSocket endpoint is registered and handles connections with proper handshake, message routing, and cleanup
