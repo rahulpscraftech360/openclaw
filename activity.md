@@ -3,8 +3,8 @@
 ## Current Status
 **Last Updated:** 2026-02-12
 **Phase 1 (LiveKit Voice Agent):** Complete (10/10 tasks)
-**Phase 2 (WebSocket Voice Streaming):** 1/9 tasks
-**Current Task:** Task 1 complete — Add Deepgram and OpenAI SDK dependencies
+**Phase 2 (WebSocket Voice Streaming):** 2/9 tasks
+**Current Task:** Task 2 complete — Add environment variable configuration for voice streaming
 
 ---
 
@@ -30,3 +30,15 @@ Each entry should include:
   - `pnpm build` — TypeScript build succeeded with no errors
 - **Issues:** `pnpm add` required `-w` flag since openclaw uses a workspace root setup
 - **Result:** Task passes — both SDKs installed and verified
+
+### 2026-02-12 — Task 2: Add environment variable configuration for voice streaming
+- **Changes:**
+  - Added `CheekStreamConfig` type to `src/config/types.gateway.ts` with fields: `enabled`, `deepgramApiKey`, `deepgramModel`, `openaiApiKey`, `ttsModel`, `ttsVoice`
+  - Added `cheeko` property to `GatewayConfig` type
+  - Added Zod validation schema for `gateway.cheeko` in `src/config/zod-schema.ts`
+  - Added field labels in `src/config/schema.field-metadata.ts` for all 6 cheeko config fields
+  - Added help text and placeholders in `src/config/schema.hints.ts` for all cheeko config fields
+- **Commands run:**
+  - `pnpm build` — TypeScript build succeeded with no errors (146 files, build complete)
+- **Issues:** None
+- **Result:** Task passes — cheeko config section fully integrated into OpenClaw config schema

@@ -126,7 +126,7 @@ Python Client (audio playback)
       "Add cheeko stream config section: enabled flag, deepgramModel, ttsModel, ttsVoice",
       "Document the new config options in config hints (src/config/schema.hints.ts)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
