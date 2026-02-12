@@ -3,8 +3,8 @@
 ## Current Status
 **Last Updated:** 2026-02-12
 **Phase 1 (LiveKit Voice Agent):** Complete (10/10 tasks)
-**Phase 2 (WebSocket Voice Streaming):** 8/9 tasks
-**Current Task:** Task 8 complete — End-to-end voice conversation test
+**Phase 2 (WebSocket Voice Streaming):** 9/10 tasks
+**Current Task:** Task 7 (new) complete — Add ElevenLabs TTS as configurable provider
 
 ---
 
@@ -225,3 +225,27 @@ Each entry should include:
   - New file: `src/gateway/cheeko-tts-elevenlabs.ts`
   - Unified `createTtsPipeline()` delegates to provider based on config
 - **Total tasks:** 10 (2 setup, 6 feature, 2 testing) — 7 complete, 3 remaining
+
+### 2026-02-12 — Task 7 (new): Add ElevenLabs TTS as a configurable provider alongside OpenAI TTS
+- **Changes:**
+  - Added `ttsProvider` ('openai' | 'elevenlabs'), `elevenlabsApiKey`, `elevenlabsVoiceId`, `elevenlabsModelId` fields to `CheekStreamConfig` type in `src/config/types.gateway.ts`
+  - Updated Zod validation schema in `src/config/zod-schema.ts` with new fields
+  - Updated field labels in `src/config/schema.field-metadata.ts` for all new cheeko config fields
+  - Updated help text and placeholders in `src/config/schema.hints.ts` for all new cheeko config fields
+  - Created `src/gateway/cheeko-tts-elevenlabs.ts` — ElevenLabs streaming TTS implementation:
+    - Uses direct HTTP API call to `https://api.elevenlabs.io/v1/text-to-speech/{voiceId}` with `pcm_24000` output format (same pattern as existing `src/tts/tts.ts` ElevenLabs integration)
+    - Encodes 24kHz 16-bit mono PCM to Opus frames (20ms, 480 samples/frame) via opusscript (VOIP mode, 32kbps)
+    - Supports abort via AbortController, proper cleanup of opusscript encoder instances
+    - Default voice settings: stability 0.5, similarity_boost 0.75, style 0.0, speaker_boost true
+    - Default voice ID: `pMsXgVXv3BLzUgSXRplE`, default model: `eleven_turbo_v2`
+    - Falls back to `ELEVENLABS_API_KEY` or `XI_API_KEY` env vars if config key not set
+  - Updated `src/gateway/cheeko-tts.ts`:
+    - Added `streamTts()` dispatcher that delegates to OpenAI or ElevenLabs based on `config.ttsProvider`
+    - Renamed original OpenAI TTS function to `streamOpenAiTts()` (private)
+    - `createTtsPipeline()` works transparently with either provider via `streamTts()` delegation
+    - No changes needed to `cheeko-stream.ts` — provider selection is fully transparent
+- **Commands run:**
+  - `pnpm build` — TypeScript build succeeded with no errors (146 files, build complete)
+  - `uv run python -c "import voice_client; import test_e2e_cheeko"` — both imports pass
+- **Issues:** None. No ElevenLabs SDK dependency needed — the existing codebase pattern uses direct `fetch` against the ElevenLabs REST API, which is cleaner and avoids an extra dependency.
+- **Result:** Task passes — ElevenLabs TTS fully integrated as configurable provider, unified pipeline delegates based on `gateway.cheeko.ttsProvider` config

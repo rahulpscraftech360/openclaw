@@ -195,7 +195,7 @@ Python Client (audio playback)
       "Update cheeko-stream.ts to pass ttsProvider config when creating the TTS pipeline",
       "Verify pnpm build succeeds with no errors"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
