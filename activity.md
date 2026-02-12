@@ -3,8 +3,8 @@
 ## Current Status
 **Last Updated:** 2026-02-12
 **Phase 1 (LiveKit Voice Agent):** Complete (10/10 tasks)
-**Phase 2 (WebSocket Voice Streaming):** 3/9 tasks
-**Current Task:** Task 3 complete — Create the /cheeko/stream WebSocket endpoint handler
+**Phase 2 (WebSocket Voice Streaming):** 4/9 tasks
+**Current Task:** Task 4 complete — Implement Opus decoding and Deepgram streaming STT integration
 
 ---
 
@@ -72,3 +72,26 @@ Each entry should include:
   - `pnpm build` — TypeScript build succeeded with no errors (146 files)
 - **Issues:** None
 - **Result:** Task passes — `/cheeko/stream` WebSocket endpoint is registered and handles connections with proper handshake, message routing, and cleanup
+
+### 2026-02-12 — Task 4: Implement Opus decoding and Deepgram streaming STT integration
+- **Changes:**
+  - Created `src/gateway/cheeko-stt.ts` — STT service wrapper around Deepgram SDK:
+    - `createSttStream()` factory opens a live WebSocket connection to Deepgram Nova-2
+    - Sends raw Opus frames directly to Deepgram (Deepgram natively supports `encoding: "opus"`) — no Opus decoder library needed
+    - Configured with `interim_results: true` for partial transcripts, `endpointing: 300ms`, `vad_events: true`, `smart_format: true`
+    - Exposes `sendAudio()`, `finalize()`, `close()`, `isConnected()` methods
+    - Emits transcript callbacks with `(text, isFinal)` for partial and final results
+    - Handles Deepgram errors, close events, and lifecycle cleanup
+  - Modified `src/gateway/cheeko-stream.ts`:
+    - Added `sttStream` and `finalTranscript` fields to `CheekStreamSession` type
+    - `ensureSttStream()` lazily creates Deepgram connection on first audio chunk
+    - `handleAudioChunk()` pipes binary Opus frames to Deepgram via `stt.sendAudio(data)`
+    - Transcript events sent to client as `{ type: "transcript", text, partial }` JSON messages
+    - Final transcript segments accumulated in `session.finalTranscript` for LLM routing (Task 5)
+    - `handleSpeechEnd()` calls `stt.finalize()` to flush buffer, then closes STT stream
+    - `handleCancel()` and `cleanupSession()` properly close STT streams
+    - `closeSttStream()` helper for clean resource teardown
+- **Commands run:**
+  - `pnpm build` — TypeScript build succeeded with no errors (146 files, build complete)
+- **Issues:** None. Originally planned to use opusscript for Opus→PCM decoding, but Deepgram natively supports `encoding: "opus"` so raw Opus frames are sent directly, eliminating the need for an Opus decoder dependency.
+- **Result:** Task passes — Deepgram streaming STT fully integrated into cheeko-stream pipeline

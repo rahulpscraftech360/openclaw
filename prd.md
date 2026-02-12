@@ -151,7 +151,7 @@ Python Client (audio playback)
       "Handle Deepgram transcript events: emit partial and final transcripts to client",
       "Handle speech_end control message: close Deepgram stream and finalize transcript"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
