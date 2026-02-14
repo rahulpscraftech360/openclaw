@@ -22,6 +22,8 @@ import time
 import uuid
 import struct
 import threading
+import wave
+from pathlib import Path
 
 import opuslib
 import websocket  # websocket-client library
@@ -36,6 +38,34 @@ INPUT_SAMPLE_RATE = 16000
 INPUT_CHANNELS = 1
 INPUT_FRAME_DURATION_MS = 20
 INPUT_SAMPLES_PER_FRAME = int(INPUT_SAMPLE_RATE * INPUT_FRAME_DURATION_MS / 1000)  # 320
+
+# Test audio file
+TEST_AUDIO_PATH = Path(__file__).parent / "record_out.wav"
+
+
+def load_pcm_frames(wav_path: Path) -> list[bytes]:
+    """Load a WAV file, resample to 16kHz mono 16-bit, return list of 20ms PCM frames."""
+    with wave.open(str(wav_path), "rb") as wf:
+        assert wf.getnchannels() == 1 and wf.getsampwidth() == 2, \
+            f"Expected mono 16-bit WAV, got ch={wf.getnchannels()} sw={wf.getsampwidth()}"
+        src_rate = wf.getframerate()
+        raw = wf.readframes(wf.getnframes())
+
+    # Resample if needed (simple decimation for integer ratios)
+    if src_rate != INPUT_SAMPLE_RATE:
+        ratio = src_rate // INPUT_SAMPLE_RATE
+        assert src_rate % INPUT_SAMPLE_RATE == 0, \
+            f"Cannot resample {src_rate}Hz -> {INPUT_SAMPLE_RATE}Hz (not an integer ratio)"
+        samples = struct.unpack(f"<{len(raw)//2}h", raw)
+        resampled = samples[::ratio]
+        raw = struct.pack(f"<{len(resampled)}h", *resampled)
+
+    frame_bytes = INPUT_SAMPLES_PER_FRAME * 2  # 16-bit = 2 bytes/sample
+    return [
+        raw[i:i + frame_bytes]
+        for i in range(0, len(raw), frame_bytes)
+        if len(raw[i:i + frame_bytes]) == frame_bytes
+    ]
 
 
 class TestResult:
@@ -90,6 +120,15 @@ class CheekTestClient:
             if self.ws:
                 self.ws.send_binary(opus_frame)
             time.sleep(0.005)
+
+    def send_audio_frames(self, pcm_frames: list[bytes], realtime: bool = True):
+        """Encode PCM frames to Opus and send. If realtime, pace at ~20ms intervals."""
+        for frame in pcm_frames:
+            opus_data = self.encoder.encode(frame, INPUT_SAMPLES_PER_FRAME)
+            if self.ws:
+                self.ws.send_binary(opus_data)
+            if realtime:
+                time.sleep(INPUT_FRAME_DURATION_MS / 1000)
 
     def send_binary(self, data: bytes):
         if self.ws:
@@ -164,11 +203,22 @@ class CheekTestClient:
 
 
 def test_latency_measurement() -> TestResult:
-    """Test 1: Measure speech_end to first_audio_chunk latency (5 queries)."""
-    result = TestResult("Latency instrumentation (5 queries)")
+    """Test 1: Measure speech_end to first_audio_chunk latency with real speech (5 queries)."""
+    result = TestResult("Latency with real speech (5 queries)")
     start = time.time()
 
+    # Load real speech audio
+    if not TEST_AUDIO_PATH.exists():
+        result.message = f"Test audio not found: {TEST_AUDIO_PATH}"
+        result.duration_ms = (time.time() - start) * 1000
+        return result
+
+    pcm_frames = load_pcm_frames(TEST_AUDIO_PATH)
+    audio_duration_ms = len(pcm_frames) * INPUT_FRAME_DURATION_MS
+    print(f"    Loaded {len(pcm_frames)} frames ({audio_duration_ms}ms) from {TEST_AUDIO_PATH.name}")
+
     latencies = []
+    transcripts = []
     query_count = 5
 
     for i in range(query_count):
@@ -186,18 +236,17 @@ def test_latency_measurement() -> TestResult:
             # Consume initial idle status
             client.recv_message(timeout=2.0)
 
-            # Send silence frames and speech_end
-            client.send_silence_frames(30)
-            time.sleep(0.2)
+            # Send real speech audio (paced at realtime)
+            client.send_audio_frames(pcm_frames)
+            time.sleep(0.1)
 
             query_start = time.time()
             client.send_speech_end()
 
             # Collect messages until we return to idle or get latency data
-            got_latency = False
-            got_idle = False
             pipeline_latency_ms = None
-            deadline = time.time() + 15.0
+            transcript_text = ""
+            deadline = time.time() + 30.0
 
             while time.time() < deadline:
                 msg = client.recv_message(timeout=deadline - time.time())
@@ -206,23 +255,23 @@ def test_latency_measurement() -> TestResult:
                 if isinstance(msg, dict):
                     if msg.get("type") == "latency":
                         pipeline_latency_ms = msg.get("speechEndToFirstAudio")
-                        got_latency = True
+                    if msg.get("type") == "transcript" and not msg.get("partial"):
+                        transcript_text = msg.get("text", "")
                     if msg.get("type") == "status" and msg.get("stage") == "idle":
-                        got_idle = True
                         break
                 elif isinstance(msg, bytes):
-                    # Binary frame = audio data arrived
+                    # Binary frame = first audio chunk arrived
                     if pipeline_latency_ms is None:
-                        # Measure client-side if no latency message
                         pipeline_latency_ms = (time.time() - query_start) * 1000
 
-            # With silence, we may not get audio (empty transcript -> idle)
-            # That's OK -measure roundtrip to idle as fallback
             if pipeline_latency_ms is not None:
                 latencies.append(pipeline_latency_ms)
-            elif got_idle:
-                roundtrip_ms = (time.time() - query_start) * 1000
-                latencies.append(roundtrip_ms)
+            if transcript_text:
+                transcripts.append(transcript_text)
+
+            print(f"    Query {i + 1}: latency={pipeline_latency_ms:.0f}ms" if pipeline_latency_ms else f"    Query {i + 1}: no audio response")
+            if transcript_text:
+                print(f"             transcript: \"{transcript_text}\"")
 
         finally:
             client.close()
@@ -237,10 +286,11 @@ def test_latency_measurement() -> TestResult:
         result.message = (
             f"{query_count} queries completed. "
             f"Latencies: {', '.join(latency_strs)}. "
-            f"Avg: {avg:.0f}ms, Min: {min_l:.0f}ms, Max: {max_l:.0f}ms"
+            f"Avg: {avg:.0f}ms, Min: {min_l:.0f}ms, Max: {max_l:.0f}ms. "
+            f"Transcripts received: {len(transcripts)}/{query_count}"
         )
     else:
-        result.message = f"Only {len(latencies)}/{query_count} queries completed"
+        result.message = f"Only {len(latencies)}/{query_count} queries got audio responses"
 
     result.duration_ms = (time.time() - start) * 1000
     return result

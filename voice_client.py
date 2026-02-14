@@ -23,7 +23,7 @@ import opuslib
 import websocket  # websocket-client library
 
 # --- Configuration ---
-GATEWAY_HOST = "localhost"
+GATEWAY_HOST = "64.227.170.31"
 GATEWAY_PORT = 18789
 WS_URL = f"ws://{GATEWAY_HOST}:{GATEWAY_PORT}/cheeko/stream"
 
@@ -79,6 +79,10 @@ class VoiceClient:
         # Pipeline state
         self.current_stage = "idle"
 
+        # Latency measurement
+        self.speech_end_time: float | None = None
+        self.waiting_for_first_audio = False
+
     # ─── WebSocket handlers ──────────────────────────────────────────
 
     def on_open(self, ws):
@@ -94,6 +98,10 @@ class VoiceClient:
         """Route incoming text (JSON) and binary (Opus audio) messages."""
         if isinstance(message, bytes):
             # Binary frame: Opus audio from TTS
+            if self.waiting_for_first_audio and self.speech_end_time:
+                latency_ms = (time.time() - self.speech_end_time) * 1000
+                self.waiting_for_first_audio = False
+                print(f"  [latency: {latency_ms:.0f}ms]", flush=True)
             self.playback_queue.put(message)
             return
 
@@ -170,6 +178,8 @@ class VoiceClient:
         if self.ws and self.connected:
             try:
                 self.ws.send(json.dumps({"type": "speech_end"}))
+                self.speech_end_time = time.time()
+                self.waiting_for_first_audio = True
             except Exception as e:
                 log.error(f"Failed to send speech_end: {e}")
 

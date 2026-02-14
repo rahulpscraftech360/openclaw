@@ -20,7 +20,8 @@
       "Bash(node --version:*)",
       "Bash(echo:*)",
       "Bash(set:*)",
-      "Bash(powershell:*)"
+      "Bash(powershell:*)",
+      "Bash(wc:*)"
     ]
   }
 }
